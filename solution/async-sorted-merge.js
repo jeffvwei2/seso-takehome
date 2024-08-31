@@ -1,25 +1,33 @@
 "use strict";
-const { BST } = require('./bst')
+const { MinHeap } = require('./heap')
 // Print all entries, across all of the *async* sources, in chronological order.
 
 module.exports = async (logSources, printer) => {
-  const Bst = new BST()
-  // get intial source entries
-  await Promise.all(
-    logSources.map(async (source,i) =>  {
-      const entry = await source.popAsync()
-      Bst.insert(entry, i)
-    })
-  )
+  const heap = new MinHeap()
+  const queue = new Array(logSources.length).fill([])
 
-  // extract minimum date, print, then grab next entry from same source
-  while(Bst.root){
-    const min = Bst.extractMin()
-    printer.print(min.value)
-    const entry = await logSources[min.source].popAsync()
-    Bst.insert(entry, min.source)
+  // helper function
+  async function getNext(source) {
+    const newentry = await logSources[source].popAsync()
+    heap.insert({
+      entry: newentry,
+      source
+    })
+    // if not drained, queue up next value
+    if (newentry) {
+      queue[source] = [getNext(source)]
+    }
   }
 
+  await Promise.all(logSources.map((source,i) => getNext(i)))
+
+  while(heap.heap.length){
+    // print minimum
+    const {entry, source} = heap.removeMin()
+    printer.print(entry)
+    // resolve next value of source
+    await Promise.all(queue[source])
+  }
   printer.done()
   return console.log("Async sort complete.")
 };
